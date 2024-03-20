@@ -23,6 +23,9 @@ dependencies:
   clsx:
     specifier: ^2.1.0
     version: 2.1.0
+  github-slugger:
+    specifier: ^2.0.0
+    version: 2.0.0
   lucide-react:
     specifier: ^0.344.0
     version: 0.344.0(react@18.2.0)
@@ -2642,7 +2645,6 @@ packages:
 
   /github-slugger@2.0.0:
     resolution: {integrity: sha512-IaOQ9puYtjrkq7Y0Ygl9KDZnrf/aiUJYUpVf89y8kyaxbRG7Y1SrX/jaumrv81vc61+kiMempujsM3Yw7w5qcw==}
-    dev: true
 
   /glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
