@@ -16,7 +16,7 @@ export function Tag({ tag, current, count }: TagProps) {
       })}
       href={`/tags/${slug(tag)}`}
     >
-      {tag}
+      {tag} {count ? `(${count})` : null}
     </Link>
   );
 }
