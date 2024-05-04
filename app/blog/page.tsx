@@ -50,15 +50,17 @@ export default async function BlogPage({ searchParams }: BlogPageProps) {
               {displayPosts.map((post) => {
                 const { slug, date, title, description, tags } = post;
                 return (
-                  <li key={slug}>
-                    <PostItem
-                      slug={slug}
-                      date={date}
-                      title={title}
-                      description={description}
-                      tags={tags}
-                    />
-                  </li>
+                  post.published && (
+                    <li key={slug}>
+                      <PostItem
+                        slug={slug}
+                        date={date}
+                        title={title}
+                        description={description}
+                        tags={tags}
+                      />
+                    </li>
+                  )
                 );
               })}
             </ul>
