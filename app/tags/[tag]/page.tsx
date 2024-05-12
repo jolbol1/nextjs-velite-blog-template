@@ -5,12 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAllTags, getPostsByTagSlug, sortTagsByCount } from "@/lib/utils";
 import { slug } from "github-slugger";
 import { Metadata } from "next";
+import { QueryPagination } from "@/components/query-pagination";
 
 interface TagPageProps {
   params: {
     tag: string;
   };
 }
+
+const POSTS_PER_PAGE = 5;
 
 export async function generateMetadata({
   params,
@@ -36,6 +39,15 @@ export default function TagPage({ params }: TagPageProps) {
   const tags = getAllTags(posts);
   const sortedTags = sortTagsByCount(tags);
 
+  const totalPages = Math.ceil(displayPosts.length / POSTS_PER_PAGE);
+
+  const currentPage = 1;
+
+  const postsForCurrentPage = displayPosts.slice(
+    POSTS_PER_PAGE * (currentPage - 1),
+    POSTS_PER_PAGE * currentPage
+  );
+
   return (
     <div className="container max-w-4xl py-6 lg:py-10">
       <div className="flex flex-col items-start gap-4 md:flex-row md:justify-between md:gap-8">
@@ -53,15 +65,17 @@ export default function TagPage({ params }: TagPageProps) {
               {displayPosts.map((post) => {
                 const { slug, date, title, description, tags } = post;
                 return (
-                  <li key={slug}>
-                    <PostItem
-                      slug={slug}
-                      date={date}
-                      title={title}
-                      description={description}
-                      tags={tags}
-                    />
-                  </li>
+                  post.published && (
+                    <li key={slug}>
+                      <PostItem
+                        slug={slug}
+                        date={date}
+                        title={title}
+                        description={description}
+                        tags={tags}
+                      />
+                    </li>
+                  )
                 );
               })}
             </ul>
@@ -69,6 +83,10 @@ export default function TagPage({ params }: TagPageProps) {
             <p>Nothing to see here yet</p>
           )}
         </div>
+        <QueryPagination
+          totalPages={totalPages}
+          className="justify-end mt-4"
+        />
         <Card className="col-span-12 row-start-3 h-fit sm:col-span-4 sm:col-start-9 sm:row-start-1">
           <CardHeader>
             <CardTitle>Tags</CardTitle>
