@@ -54,13 +54,15 @@ export default function TagPage({ params }: TagPageProps) {
                 const { slug, date, title, description, tags } = post;
                 return (
                   <li key={slug}>
-                    <PostItem
-                      slug={slug}
-                      date={date}
-                      title={title}
-                      description={description}
-                      tags={tags}
-                    />
+                    {post.published && (
+                      <PostItem
+                        slug={slug}
+                        date={date}
+                        title={title}
+                        description={description}
+                        tags={tags}
+                      />
+                    )}
                   </li>
                 );
               })}
