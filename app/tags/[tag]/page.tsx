@@ -65,8 +65,8 @@ export default function TagPage({ params }: TagPageProps) {
               {displayPosts.map((post) => {
                 const { slug, date, title, description, tags } = post;
                 return (
-                  post.published && (
-                    <li key={slug}>
+                  <li key={slug}>
+                    {post.published && (
                       <PostItem
                         slug={slug}
                         date={date}
@@ -74,8 +74,8 @@ export default function TagPage({ params }: TagPageProps) {
                         description={description}
                         tags={tags}
                       />
-                    </li>
-                  )
+                    )}
+                  </li>
                 );
               })}
             </ul>
