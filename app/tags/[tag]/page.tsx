@@ -32,7 +32,8 @@ export default function TagPage({ params }: TagPageProps) {
   const { tag } = params;
   const title = tag.split("-").join(" ");
 
-  const displayPosts = getPostsByTagSlug(posts, tag);
+  const allPosts = getPostsByTagSlug(posts, tag);
+  const displayPosts = allPosts.filter(post => post.published);
   const tags = getAllTags(posts);
   const sortedTags = sortTagsByCount(tags);
 
