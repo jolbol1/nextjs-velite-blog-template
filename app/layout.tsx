@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+// import { Inter } from "next/font/google"; // DEPRECATED
+import { Source_Serif_4 } from "next/font/google";
+import { Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { SiteHeader } from "@/components/site-header";
@@ -8,7 +10,16 @@ import { siteConfig } from "@/config/site";
 import { SiteFooter } from "@/components/site-footer";
 import { Analytics } from "@vercel/analytics/next";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+//const inter = Inter({ subsets: ["latin"], variable: "--font-sans" }); // DEPRECATED
+const sourceSerif = Source_Serif_4({
+  subsets: ["latin"],
+  variable: "--font-sans",
+});
+
+const playfairDisplay = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-sans",
+});
 
 export const metadata: Metadata = {
   title: siteConfig.name,
@@ -33,7 +44,7 @@ export default function RootLayout({
       <body
         className={cn(
           "min-h-screen bg-background font-sans antialiased",
-          inter.variable,
+          sourceSerif.variable,
         )}
       >
         <Providers>
