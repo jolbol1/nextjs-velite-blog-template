@@ -1,0 +1,605 @@
+---
+title: Building a Starling Murmuration Simulation with Boids
+description: A deep dive into creating a realistic flocking behavior visualization inspired by starling murmurations, using the Boids algorithm in React and TypeScript.
+date: 2025-03-16
+tags: ["react", "typescript", "canvas", "algorithms", "animation"]
+published: false
+---
+
+# Building a Starling Murmuration Simulation with Boids
+
+Have you ever watched a flock of starlings at dusk, swirling in mesmerizing patterns across the sky? These spectacular aerial displays, known as murmurations, are one of nature's most fascinating phenomena. In this article, I'll walk through how I created a realistic simulation of this emergent behavior using a technique called "Boids."
+
+{/* You can add an image of starling murmurations here */}
+{/* Example: ![Starling Murmuration](/images/starling-murmuration.jpg) */}
+
+## What Are Boids?
+
+Boids (bird-oids) is an artificial life simulation originally developed by Craig Reynolds in 1986. The algorithm simulates the flocking behavior of birds using simple rules applied to individual agents (boids). Despite the simplicity of these rules, they produce complex emergent behavior that closely resembles real bird flocks.
+
+The beauty of boids is that there's no central coordination - each boid makes its own decisions based on local information about its neighbors. Yet, when combined, these individual decisions create cohesive group behavior.
+
+## The Core Rules of Boids
+
+The classic boids algorithm is based on three primary rules:
+
+1. **Separation**: Avoid crowding neighbors (short-range repulsion)
+2. **Alignment**: Steer towards the average heading of neighbors
+3. **Cohesion**: Steer towards the average position of neighbors
+
+In our enhanced implementation, we've added several additional behaviors:
+
+4. **Edge Avoidance**: Steer away from the container edges
+5. **Shape Formation**: Attraction to predefined or dynamically generated shapes
+6. **3D Depth Perception**: Giving the 2D canvas a sense of 3D space
+
+## Implementing the Boids Algorithm in React
+
+Let's explore how we built this visualization using React and TypeScript. The complete code is quite extensive, so I'll focus on the key aspects and provide snippets of the most important parts.
+
+### The Component Interface
+
+First, let's look at the props interface that defines the configurable aspects of our visualization:
+
+```typescript
+interface BoidsVisualizationProps {
+  className?: string;
+  width?: number;
+  height?: number;
+  numBoids?: number;
+  backgroundColor?: string;
+  boidColor?: string;
+  boidRadius?: number;
+  depth?: number; // Depth of the 3D space
+  shapeComplexity?: number; // Number of attraction points for shape formation
+  shapeWeight?: number; // Weight of shape-forming behavior
+  shapeType?: "circle" | "figure8" | "spiral" | "heart" | "random" | "dynamic" | "warp" | "splines";
+  numDynamicAttractors?: number; // For the "dynamic" shape type
+  attractorChangeInterval?: number; // How often to change attractors (ms)
+  maxSpeed?: number; // Maximum speed boids can travel
+  showTrails?: boolean; // Whether to show motion trails
+  trailOpacity?: number; // Opacity of the motion trails (0-1)
+  warpSpeed?: number; // Speed of warping transformations
+  splineChangeInterval?: number; // How often to generate new splines (ms)
+}
+```
+
+This rich interface allows for incredible customization of the simulation, from basic parameters like the number of boids to complex behaviors like shape formation patterns.
+
+### Data Structures
+
+To represent our boids and their environment, we need a few core data structures:
+
+```typescript
+// 3D vector for positions, velocities, and forces
+interface Vector3D {
+  x: number;
+  y: number;
+  z: number;
+}
+
+// Individual boid properties
+interface Boid {
+  position: Vector3D;
+  velocity: Vector3D;
+  acceleration: Vector3D;
+  id: number;
+  targetAttractor?: number; // For shape formation
+}
+
+// Attraction points for shape formation
+interface AttractorPoint {
+  position: Vector3D;
+  strength: number;
+}
+```
+
+### Spatial Partitioning for Performance
+
+A key challenge with boid simulations is performance. Naively, each boid would need to check its relationship with every other boid, resulting in O(n²) complexity - too slow for real-time animation with hundreds of boids.
+
+To solve this, we implemented a spatial partitioning grid that divides the space into cells. Boids only need to check neighboring cells, dramatically reducing the number of calculations:
+
+```typescript
+class SpatialGrid3D {
+  cells: Map<string, Cell>;
+  cellSize: number;
+
+  constructor(cellSize: number) {
+    this.cells = new Map();
+    this.cellSize = cellSize;
+  }
+
+  getCellCoords(x: number, y: number, z: number) {
+    return {
+      row: Math.floor(y / this.cellSize),
+      col: Math.floor(x / this.cellSize),
+      depth: Math.floor(z / this.cellSize)
+    };
+  }
+  
+  getCellKey(row: number, col: number, depth: number): string {
+    return `${row},${col},${depth}`;
+  }
+
+  addBoid(boid: Boid) {
+    const { row, col, depth } = this.getCellCoords(
+      boid.position.x, 
+      boid.position.y, 
+      boid.position.z
+    );
+    const key = this.getCellKey(row, col, depth);
+    
+    if (!this.cells.has(key)) {
+      this.cells.set(key, { boids: [] });
+    }
+    
+    this.cells.get(key)!.boids.push(boid);
+  }
+
+  getNeighbors(boid: Boid, radius: number): Boid[] {
+    const neighbors: Boid[] = [];
+    const { row, col, depth } = this.getCellCoords(
+      boid.position.x, 
+      boid.position.y, 
+      boid.position.z
+    );
+    
+    // Calculate cell range to check based on radius
+    const cellRadius = Math.ceil(radius / this.cellSize);
+    
+    // Check neighboring cells
+    for (let r = row - cellRadius; r <= row + cellRadius; r++) {
+      for (let c = col - cellRadius; c <= col + cellRadius; c++) {
+        for (let d = depth - cellRadius; d <= depth + cellRadius; d++) {
+          const key = this.getCellKey(r, c, d);
+          const cell = this.cells.get(key);
+          
+          if (cell) {
+            neighbors.push(...cell.boids);
+          }
+        }
+      }
+    }
+    
+    return neighbors;
+  }
+}
+```
+
+This optimization allows us to simulate thousands of boids in real-time, even on modest hardware.
+
+### The Core Boid Update Logic
+
+The heart of our simulation is the update function that calculates new forces and positions for each boid:
+
+```typescript
+const updateBoids = () => {
+  const grid = new SpatialGrid3D(perceptionRadius);
+  
+  // Add boids to spatial grid
+  for (const boid of boidsRef.current) {
+    grid.addBoid(boid);
+  }
+  
+  // Update each boid
+  for (const boid of boidsRef.current) {
+    // Find neighbors within perception radius
+    const neighbors = grid.getNeighbors(boid, perceptionRadius);
+    
+    // Apply separation, alignment, cohesion, edge avoidance, and shape formation
+    let alignmentForce = { x: 0, y: 0, z: 0 };
+    let cohesionForce = { x: 0, y: 0, z: 0 };
+    let separationForce = { x: 0, y: 0, z: 0 };
+    
+    // Count valid neighbors (excluding self)
+    let alignmentCount = 0;
+    let cohesionCount = 0;
+    let separationCount = 0;
+    
+    // Process neighbors
+    for (const neighbor of neighbors) {
+      // Skip self
+      if (neighbor.id === boid.id) continue;
+      
+      // Calculate distance to neighbor
+      const dx = neighbor.position.x - boid.position.x;
+      const dy = neighbor.position.y - boid.position.y;
+      const dz = neighbor.position.z - boid.position.z;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      const dist = Math.sqrt(distSq);
+      
+      // Apply separation (avoid collision)
+      if (dist < separationRadius) {
+        // Calculate force away from neighbor
+        const force = {
+          x: -dx / dist,
+          y: -dy / dist,
+          z: -dz / dist
+        };
+        
+        // Weight by distance (closer neighbors have stronger effect)
+        separationForce.x += force.x / dist;
+        separationForce.y += force.y / dist;
+        separationForce.z += force.z / dist;
+        separationCount++;
+      }
+      
+      // Apply alignment and cohesion if within perception radius
+      if (dist < perceptionRadius) {
+        // Alignment: match velocity
+        alignmentForce.x += neighbor.velocity.x;
+        alignmentForce.y += neighbor.velocity.y;
+        alignmentForce.z += neighbor.velocity.z;
+        alignmentCount++;
+        
+        // Cohesion: move toward center of mass
+        cohesionForce.x += neighbor.position.x;
+        cohesionForce.y += neighbor.position.y;
+        cohesionForce.z += neighbor.position.z;
+        cohesionCount++;
+      }
+    }
+    
+    // Calculate final forces
+    let alignment = { x: 0, y: 0, z: 0 };
+    let cohesion = { x: 0, y: 0, z: 0 };
+    let separation = { x: 0, y: 0, z: 0 };
+    
+    // Alignment: average and normalize
+    if (alignmentCount > 0) {
+      alignment = normalize({
+        x: alignmentForce.x / alignmentCount,
+        y: alignmentForce.y / alignmentCount,
+        z: alignmentForce.z / alignmentCount
+      }, currentMaxSpeed);
+    }
+    
+    // Cohesion: move toward center of mass
+    if (cohesionCount > 0) {
+      // Calculate center of mass
+      const centerOfMass = {
+        x: cohesionForce.x / cohesionCount,
+        y: cohesionForce.y / cohesionCount,
+        z: cohesionForce.z / cohesionCount
+      };
+      
+      // Calculate direction to center of mass
+      const toCenterOfMass = {
+        x: centerOfMass.x - boid.position.x,
+        y: centerOfMass.y - boid.position.y,
+        z: centerOfMass.z - boid.position.z
+      };
+      
+      // Normalize and scale
+      cohesion = normalize(toCenterOfMass, currentMaxSpeed);
+    }
+    
+    // Separation: normalize
+    if (separationCount > 0) {
+      separation = normalize({
+        x: separationForce.x / separationCount,
+        y: separationForce.y / separationCount,
+        z: separationForce.z / separationCount
+      }, currentMaxSpeed);
+    }
+    
+    // Edge avoidance
+    const edgeForce = calculateEdgeAvoidance(boid);
+    
+    // Shape formation force (if applicable)
+    const shapeForce = calculateShapeForce(boid);
+    
+    // Combine all forces with respective weights
+    boid.acceleration.x = 
+      alignment.x * alignmentWeight +
+      cohesion.x * cohesionWeight +
+      separation.x * separationWeight +
+      edgeForce.x * edgeAvoidanceWeight +
+      shapeForce.x * shapeFormationWeight;
+      
+    boid.acceleration.y = 
+      alignment.y * alignmentWeight +
+      cohesion.y * cohesionWeight +
+      separation.y * separationWeight +
+      edgeForce.y * edgeAvoidanceWeight +
+      shapeForce.y * shapeFormationWeight;
+      
+    boid.acceleration.z = 
+      alignment.z * alignmentWeight +
+      cohesion.z * cohesionWeight +
+      separation.z * separationWeight +
+      edgeForce.z * edgeAvoidanceWeight +
+      shapeForce.z * shapeFormationWeight;
+    
+    // Update velocity
+    boid.velocity.x += boid.acceleration.x;
+    boid.velocity.y += boid.acceleration.y;
+    boid.velocity.z += boid.acceleration.z;
+    
+    // Limit speed
+    boid.velocity = limit(boid.velocity, currentMaxSpeed);
+    
+    // Update position
+    boid.position.x += boid.velocity.x;
+    boid.position.y += boid.velocity.y;
+    boid.position.z += boid.velocity.z;
+    
+    // Reset acceleration
+    boid.acceleration = { x: 0, y: 0, z: 0 };
+  }
+};
+```
+
+### Shape Formation with Organic Splines
+
+One of the most interesting features of our simulation is the ability for boids to form organic shapes. Every few seconds, we generate new organic splines that attract the boids:
+
+```typescript
+const generateOrganicSplines = () => {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const centerZ = depth / 2;
+  
+  // Set of new attractor points that will form our spline
+  const splinePoints: AttractorPoint[] = [];
+  
+  // Randomly determine the type of organic form
+  const splineType = Math.floor(Math.random() * 4); // 0-3 different types
+  
+  // Generate size, rotation angles, scaling factors
+  const maxSize = Math.min(width, height) * (0.3 + Math.random() * 0.4);
+  const pointCount = shapeComplexity * 2;
+  const rotX = Math.random() * Math.PI * 2;
+  const rotY = Math.random() * Math.PI * 2;
+  const rotZ = Math.random() * Math.PI * 2;
+  const scaleX = 0.5 + Math.random() * 1.0;
+  const scaleY = 0.5 + Math.random() * 1.0;
+  const scaleZ = 0.5 + Math.random() * 1.0;
+  
+  // Generate shape based on type
+  switch (splineType) {
+    case 0: // Ellipsoid
+      for (let i = 0; i < pointCount; i++) {
+        const theta = (i / pointCount) * Math.PI * 2;
+        const phi = (Math.random() * 0.8 + 0.1) * Math.PI;
+        
+        // Base ellipsoid coordinates with noise
+        let x = Math.sin(phi) * Math.cos(theta) * maxSize * scaleX * (0.8 + Math.random() * 0.4);
+        let y = Math.sin(phi) * Math.sin(theta) * maxSize * scaleY * (0.8 + Math.random() * 0.4);
+        let z = Math.cos(phi) * maxSize * scaleZ * (0.8 + Math.random() * 0.4);
+        
+        // Apply 3D rotation and add to points
+        const rotatedPoint = rotate3D(x, y, z, rotX, rotY, rotZ);
+        splinePoints.push({
+          position: {
+            x: centerX + rotatedPoint.x,
+            y: centerY + rotatedPoint.y,
+            z: centerZ + rotatedPoint.z
+          },
+          strength: 0.8 + Math.random() * 0.4
+        });
+      }
+      break;
+      
+    case 1: // Ribbon/Möbius-like form
+      // Similar pattern with different mathematics
+      // ...
+      
+    case 2: // Lemniscate (figure 8)
+      // ...
+      
+    case 3: // Toroidal spiral
+      // ...
+  }
+  
+  // Assign each boid to a point on the spline
+  const boids = boidsRef.current;
+  for (let i = 0; i < boids.length; i++) {
+    const pointIndex = Math.floor((i / boids.length) * splinePoints.length);
+    boids[i].targetAttractor = pointIndex % splinePoints.length;
+  }
+  
+  // Update reference and timer
+  splinePointsRef.current = splinePoints;
+  lastSplineChangeRef.current = Date.now();
+};
+```
+
+### Rendering with Artistic Effects
+
+To create a truly beautiful visualization, we implemented several artistic rendering techniques:
+
+```typescript
+const render = () => {
+  const canvas = canvasRef.current;
+  if (!canvas) return;
+  
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  
+  // Apply motion trails if enabled
+  if (showTrails) {
+    // Create semi-transparent layer over previous frame
+    ctx.fillStyle = `rgba(0, 0, 0, ${1 - trailOpacity})`;
+    
+    if (backgroundColor === "transparent") {
+      ctx.globalAlpha = 1 - trailOpacity;
+      ctx.clearRect(0, 0, width, height);
+      ctx.globalAlpha = 1;
+    } else {
+      // Create a semi-transparent overlay of the background color
+      const bgColor = backgroundColor === "currentColor" ? "black" : backgroundColor;
+      let r = 0, g = 0, b = 0;
+      
+      if (bgColor.startsWith("rgb")) {
+        const match = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (match) {
+          [, r, g, b] = match.map(Number);
+        }
+      }
+      
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${1 - trailOpacity})`;
+      ctx.fillRect(0, 0, width, height);
+    }
+  } else {
+    // No trails - clear canvas completely
+    if (backgroundColor === "transparent") {
+      ctx.clearRect(0, 0, width, height);
+    } else {
+      ctx.fillStyle = backgroundColor;
+      ctx.fillRect(0, 0, width, height);
+    }
+  }
+  
+  // Sort boids by z-position for proper depth rendering
+  const sortedBoids = [...boidsRef.current].sort((a, b) => b.position.z - a.position.z);
+  
+  // Create a subtle wave effect through the flock
+  const time = Date.now() / 10000;
+  
+  // Draw each boid with depth cues
+  for (const boid of sortedBoids) {
+    // Normalized z position (0 to 1) - 0 is closest, 1 is furthest
+    const zNormalized = boid.position.z / depth;
+    
+    // Size based on z - closer boids appear larger
+    const sizeScale = 1 - (zNormalized * 0.7);
+    const sizeVariation = 0.2 * Math.sin(boid.id * 0.1 + time);
+    const displayRadius = boidRadius * sizeScale * (1 + sizeVariation);
+    
+    // Opacity based on z - closer boids are more opaque
+    const baseOpacity = 1 - (zNormalized * 0.6);
+    const wavePhase = (boid.position.x / width + boid.position.y / height) * 4;
+    const opacityVariation = 0.15 * Math.sin(time * 2 + wavePhase);
+    const opacity = Math.max(0.1, Math.min(1, baseOpacity + opacityVariation));
+    
+    // Set color with opacity and subtle variations
+    let fillStyle = boidColor;
+    if (boidColor.startsWith('rgb')) {
+      fillStyle = boidColor.replace(/rgba?\(([^)]+)\)/, (match, params) => {
+        const rgbValues = params.split(',').map((v: string) => v.trim());
+        if (rgbValues.length >= 3) {
+          // Add slight color variation
+          const r = Math.min(255, Math.max(0, parseInt(rgbValues[0]) + Math.floor(sizeVariation * 5)));
+          const g = Math.min(255, Math.max(0, parseInt(rgbValues[1]) + Math.floor(sizeVariation * 5)));
+          const b = Math.min(255, Math.max(0, parseInt(rgbValues[2]) + Math.floor(sizeVariation * 5)));
+          
+          return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+        }
+        return `rgba(${rgbValues[0]}, ${rgbValues[1]}, ${rgbValues[2]}, ${opacity})`;
+      });
+    } else {
+      fillStyle = `rgba(0, 0, 0, ${opacity})`;
+    }
+    
+    // Calculate velocity for elongation
+    const velocityMag = magnitude(boid.velocity);
+    const velocityNormalized = Math.min(1, velocityMag / currentMaxSpeed);
+    
+    // Direction of motion
+    const direction = {
+      x: boid.velocity.x / (velocityMag || 1),
+      y: boid.velocity.y / (velocityMag || 1)
+    };
+    
+    // Draw bird-like shapes in direction of movement
+    if (velocityMag > 0.1) {
+      // Elongated teardrop shape
+      const stretchFactor = 1 + velocityNormalized * 0.7;
+      
+      ctx.beginPath();
+      ctx.moveTo(
+        boid.position.x - direction.x * displayRadius * stretchFactor,
+        boid.position.y - direction.y * displayRadius * stretchFactor
+      );
+      
+      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
+        const angleFromDirection = Math.abs(Math.atan2(
+          Math.sin(angle), 
+          Math.cos(angle) * stretchFactor
+        ));
+        
+        const radiusMultiplier = 0.8 + 0.2 * (1 - Math.cos(angleFromDirection));
+        
+        ctx.lineTo(
+          boid.position.x + Math.cos(angle) * displayRadius * radiusMultiplier,
+          boid.position.y + Math.sin(angle) * displayRadius * radiusMultiplier
+        );
+      }
+      
+      ctx.closePath();
+    } else {
+      // Draw circles for slow/non-moving boids
+      ctx.beginPath();
+      ctx.arc(boid.position.x, boid.position.y, displayRadius, 0, Math.PI * 2);
+    }
+    
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+  }
+};
+```
+
+This rendering approach creates:
+
+1. **Motion trails**: Creates the fluid, smeared appearance characteristic of real starling murmurations
+2. **Depth perception**: Boids appear larger and more opaque when closer to the viewer
+3. **Natural variations**: Subtle size and color variations give the flock a more organic feel
+4. **Bird-like shapes**: Boids elongate in their direction of travel, resembling real birds
+
+## Using the Boids Visualization in Your Projects
+
+Incorporating this visualization into your own React project is straightforward:
+
+```jsx
+import BoidsVisualization from '@/components/BoidsVisualization';
+
+export default function MyPage() {
+  return (
+    <div className="relative h-screen">
+      {/* Background visualization */}
+      <div className="absolute inset-0 overflow-hidden">
+        <BoidsVisualization 
+          width={1200}
+          height={600}
+          numBoids={500}
+          backgroundColor="transparent"
+          boidColor="rgba(255, 255, 255, 0.8)"
+          boidRadius={2}
+          depth={300}
+          shapeType="splines"
+          splineChangeInterval={5000}
+          showTrails={true}
+          trailOpacity={0.7}
+          className="w-full h-full max-w-[1200px] mx-auto opacity-60"
+        />
+      </div>
+      
+      {/* Your content */}
+      <div className="relative z-10">
+        <h1>Your Content Here</h1>
+        {/* ... */}
+      </div>
+    </div>
+  );
+}
+```
+
+You can experiment with different parameters to create various effects, from dense, rapid flocks to sparse, gentle movements.
+
+## Conclusion
+
+Creating this starling murmuration simulation has been a fascinating journey into both computer science and natural behavior. The boids algorithm demonstrates how simple rules can generate incredibly complex and beautiful emergent behavior - much like in nature itself.
+
+The most powerful aspect of this simulation is how it bridges the gap between art and science. The mathematical rules produce aesthetically pleasing patterns that capture some of the awe we feel when witnessing real starling murmurations.
+
+I encourage you to experiment with the parameters, create your own shape formations, and explore how changing the rules affects the emergent behavior. The code is fully customizable and can be extended in countless ways.
+
+## Resources
+
+- [Craig Reynolds' original Boids paper](https://www.red3d.com/cwr/boids/)
+- [The Nature of Code by Daniel Shiffman](https://natureofcode.com/book/chapter-6-autonomous-agents/)
+- [Real starling murmurations on YouTube](https://www.youtube.com/results?search_query=starling+murmuration)
+
+*The full source code for this visualization is available in the project's GitHub repository. Feel free to fork it, modify it, and make it your own!* 

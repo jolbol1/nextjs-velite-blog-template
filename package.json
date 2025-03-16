@@ -27,7 +27,7 @@
     "react-pdf": "^9.1.1",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
-    "tailwind-merge": "^2.2.1",
+    "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "velite": "^0.2.1"
   },
